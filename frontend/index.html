@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#101116">
+  <title>CS2 Rewards</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-mark">CS<span>2</span></div>
+      <div class="brand-copy"><strong>REWARDS</strong><small>DAILY • SKINS • REWARDS</small></div>
+      <div class="user-chip" id="userLabel">PLAYER</div>
+    </header>
+
+    <main>
+      <section class="balance-panel">
+        <div><p class="eyebrow">ТВОЙ БАЛАНС</p><div class="balance-value" id="balance">— <span>🪙</span></div></div>
+        <div class="balance-side"><span class="live-dot"></span> LIVE ACCOUNT</div>
+      </section>
+
+      <section id="homePage" class="page">
+        <div class="hero-card">
+          <div class="hero-tag">DAILY DROP</div>
+          <h1>Забирай свой<br><em>ежедневный бонус</em></h1>
+          <p>Заходи каждый день, копи монеты и выбирай скины в каталоге.</p>
+          <button class="primary-button" id="bonusButton">ПОЛУЧИТЬ 100 МОНЕТ</button>
+          <div class="timer-line"><span id="bonusStatus">Бонус доступен после входа</span><strong id="countdown">—</strong></div>
+        </div>
+        <div class="section-heading"><div><p class="eyebrow">НАЧНИ ЗДЕСЬ</p><h2>Твой прогресс</h2></div></div>
+        <div class="quick-grid">
+          <button class="quick-card" data-page="shopPage"><span class="quick-icon">▧</span><strong>Магазин</strong><small>Выбирай предметы</small></button>
+          <button class="quick-card" data-page="inventoryPage"><span class="quick-icon">▤</span><strong>Инвентарь</strong><small>Твои покупки</small></button>
+        </div>
+        <p class="notice">Пока покупки демонстрационные: монеты и предметы учитываются на сервере проекта, но скины ещё не передаются в Steam.</p>
+      </section>
+
+      <section id="shopPage" class="page hidden">
+        <div class="section-heading"><div><p class="eyebrow">КАТАЛОГ</p><h2>Магазин скинов</h2></div><span class="count-pill" id="shopCount">0 ITEMS</span></div>
+        <div class="filters" id="filters">
+          <button class="filter active" data-category="all">Все</button>
+          <button class="filter" data-category="rifles">Винтовки</button>
+          <button class="filter" data-category="snipers">AWP</button>
+          <button class="filter" data-category="pistols">Пистолеты</button>
+          <button class="filter" data-category="knives">Ножи</button>
+        </div>
+        <div class="skin-grid" id="shopItems"></div>
+      </section>
+
+      <section id="inventoryPage" class="page hidden">
+        <div class="section-heading"><div><p class="eyebrow">YOUR COLLECTION</p><h2>Инвентарь</h2></div><span class="count-pill" id="inventoryCount">0 ITEMS</span></div>
+        <div class="skin-grid" id="inventoryItems"></div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav">
+      <button class="nav-button active" data-page="homePage"><span>⌂</span>Главная</button>
+      <button class="nav-button" data-page="shopPage"><span>▧</span>Магазин</button>
+      <button class="nav-button" data-page="inventoryPage"><span>▤</span>Инвентарь</button>
+    </nav>
+    <div class="toast" id="toast" role="status"></div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
