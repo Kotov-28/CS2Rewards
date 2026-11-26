@@ -1,68 +1,354 @@
-<!doctype html>
+
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#101116">
-  <title>CS2 Rewards</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#101318">
+    <title>CS2 Rewards</title>
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <div class="brand-mark">CS<span>2</span></div>
-      <div class="brand-copy"><strong>REWARDS</strong><small>DAILY • SKINS • REWARDS</small></div>
-      <div class="user-chip" id="userLabel">PLAYER</div>
-    </header>
+    <div class="app">
 
-    <main>
-      <section class="balance-panel">
-        <div><p class="eyebrow">ТВОЙ БАЛАНС</p><div class="balance-value" id="balance">— <span>🪙</span></div></div>
-        <div class="balance-side"><span class="live-dot"></span> LIVE ACCOUNT</div>
-      </section>
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">CS</span>
+                <div>
+                    <h1>CS2 <span>REWARDS</span></h1>
+                    <small>CASE OPENING</small>
+                </div>
+            </div>
 
-      <section id="homePage" class="page">
-        <div class="hero-card">
-          <div class="hero-tag">DAILY DROP</div>
-          <h1>Забирай свой<br><em>ежедневный бонус</em></h1>
-          <p>Заходи каждый день, копи монеты и выбирай скины в каталоге.</p>
-          <button class="primary-button" id="bonusButton">ПОЛУЧИТЬ 100 МОНЕТ</button>
-          <div class="timer-line"><span id="bonusStatus">Бонус доступен после входа</span><strong id="countdown">—</strong></div>
-        </div>
-        <div class="section-heading"><div><p class="eyebrow">НАЧНИ ЗДЕСЬ</p><h2>Твой прогресс</h2></div></div>
-        <div class="quick-grid">
-          <button class="quick-card" data-page="shopPage"><span class="quick-icon">▧</span><strong>Магазин</strong><small>Выбирай предметы</small></button>
-          <button class="quick-card" data-page="inventoryPage"><span class="quick-icon">▤</span><strong>Инвентарь</strong><small>Твои покупки</small></button>
-        </div>
-        <p class="notice">Пока покупки демонстрационные: монеты и предметы учитываются на сервере проекта, но скины ещё не передаются в Steam.</p>
-      </section>
+            <div class="balance">
+                <span>🪙</span>
+                <strong id="balance">0</strong>
+            </div>
+        </header>
 
-      <section id="shopPage" class="page hidden">
-        <div class="section-heading"><div><p class="eyebrow">КАТАЛОГ</p><h2>Магазин скинов</h2></div><span class="count-pill" id="shopCount">0 ITEMS</span></div>
-        <div class="filters" id="filters">
-          <button class="filter active" data-category="all">Все</button>
-          <button class="filter" data-category="rifles">Винтовки</button>
-          <button class="filter" data-category="snipers">AWP</button>
-          <button class="filter" data-category="pistols">Пистолеты</button>
-          <button class="filter" data-category="knives">Ножи</button>
-        </div>
-        <div class="skin-grid" id="shopItems"></div>
-      </section>
+        <main>
 
-      <section id="inventoryPage" class="page hidden">
-        <div class="section-heading"><div><p class="eyebrow">YOUR COLLECTION</p><h2>Инвентарь</h2></div><span class="count-pill" id="inventoryCount">0 ITEMS</span></div>
-        <div class="skin-grid" id="inventoryItems"></div>
-      </section>
-    </main>
+            <!-- ГЛАВНАЯ -->
 
-    <nav class="bottom-nav">
-      <button class="nav-button active" data-page="homePage"><span>⌂</span>Главная</button>
-      <button class="nav-button" data-page="shopPage"><span>▧</span>Магазин</button>
-      <button class="nav-button" data-page="inventoryPage"><span>▤</span>Инвентарь</button>
-    </nav>
-    <div class="toast" id="toast" role="status"></div>
-  </div>
-  <script src="script.js"></script>
+            <section class="page active" id="homePage">
+                <div class="hero">
+                    <div class="hero-content">
+                        <span class="eyebrow">WELCOME TO CS2 REWARDS</span>
+                        <h2>ОТКРЫВАЙ<br><span>КЕЙСЫ</span></h2>
+                        <p>Испытай удачу и получи редкие скины!</p>
+                        <button class="primary-button" onclick="showPage('casesPage')">
+                            ОТКРЫТЬ КЕЙСЫ
+                        </button>
+                    </div>
+                    <div class="hero-decoration">★</div>
+                </div>
+
+                <div class="section-heading">
+                    <h2>Ежедневный бонус</h2>
+                    <span class="tag">DAILY REWARD</span>
+                </div>
+
+                <div class="bonus-card">
+                    <div class="bonus-icon">🎁</div>
+                    <div class="bonus-info">
+                        <h3>10 монет</h3>
+                        <p>Получай бонус каждые 24 часа</p>
+                        <small id="bonusTimer"></small>
+                    </div>
+                    <button id="bonusButton" class="bonus-button" onclick="claimBonus()">
+                        ПОЛУЧИТЬ
+                    </button>
+                </div>
+
+                <div class="section-heading">
+                    <h2>Быстрый доступ</h2>
+                </div>
+
+                <div class="quick-grid">
+                    <button class="quick-card" onclick="showPage('casesPage')">
+                        <span>📦</span>
+                        <strong>Кейсы</strong>
+                        <small>10 кейсов</small>
+                    </button>
+
+                    <button class="quick-card" onclick="showPage('battlePage')">
+                        <span>⚔️</span>
+                        <strong>Case Battle</strong>
+                        <small>Играй против бота</small>
+                    </button>
+
+                    <button class="quick-card" onclick="showPage('inventoryPage')">
+                        <span>🎒</span>
+                        <strong>Инвентарь</strong>
+                        <small>Твои предметы</small>
+                    </button>
+
+                    <button class="quick-card" onclick="showPage('profilePage')">
+                        <span>👤</span>
+                        <strong>Профиль</strong>
+                        <small>Настройки аккаунта</small>
+                    </button>
+                </div>
+            </section>
+
+
+            <!-- КЕЙСЫ -->
+
+            <section class="page" id="casesPage">
+                <div class="page-title">
+                    <span class="eyebrow">CASE COLLECTION</span>
+                    <h2>КЕЙСЫ</h2>
+                    <p>Выбирай кейс и пробуй получить редкий предмет.</p>
+                </div>
+
+                <div id="casesList" class="cases-grid">
+                    <div class="loading">Загрузка кейсов...</div>
+                </div>
+            </section>
+
+
+            <!-- ОТКРЫТИЕ КЕЙСА -->
+
+            <section class="page" id="openingPage">
+                <button class="back-button" onclick="showPage('casesPage')">
+                    ← НАЗАД К КЕЙСАМ
+                </button>
+
+                <div class="page-title">
+                    <span class="eyebrow">CASE OPENING</span>
+                    <h2 id="openingCaseName">ОТКРЫТИЕ КЕЙСА</h2>
+                </div>
+
+                <div class="opening-panel">
+                    <div id="openingCaseIcon" class="opening-icon">📦</div>
+
+                    <h3 id="openingCaseTitle">Выбери количество</h3>
+                    <p id="openingCasePrice">Цена: 0 монет</p>
+
+                    <div class="count-label">Количество кейсов</div>
+
+                    <div class="count-controls">
+                        <button onclick="changeOpenCount(-1)">−</button>
+                        <strong id="openCount">1</strong>
+                        <button onclick="changeOpenCount(1)">+</button>
+                    </div>
+
+                    <div class="count-presets">
+                        <button onclick="setOpenCount(1)">1</button>
+                        <button onclick="setOpenCount(2)">2</button>
+                        <button onclick="setOpenCount(3)">3</button>
+                        <button onclick="setOpenCount(4)">4</button>
+                        <button onclick="setOpenCount(10)">10</button>
+                        <button onclick="setOpenCount(25)">25</button>
+                        <button onclick="setOpenCount(50)">50</button>
+                    </div>
+
+                    <p class="total-price">
+                        Итого: <strong id="openTotal">0</strong> монет
+                    </p>
+
+                    <div class="opening-actions">
+                        <button class="secondary-button" onclick="openCases(true)">
+                            ДЕМО-ОТКРЫТИЕ
+                        </button>
+
+                        <button class="primary-button" onclick="openCases(false)">
+                            ОТКРЫТЬ ЗА МОНЕТЫ
+                        </button>
+                    </div>
+                </div>
+
+                <div id="openingResults" class="results-section"></div>
+            </section>
+
+
+            <!-- МАГАЗИН -->
+
+            <section class="page" id="shopPage">
+                <div class="page-title">
+                    <span class="eyebrow">SKIN MARKET</span>
+                    <h2>МАГАЗИН</h2>
+                    <p>Покупай предметы за внутриигровые монеты.</p>
+                </div>
+
+                <div class="filter-buttons">
+                    <button class="filter-button active" data-filter="all">Все</button>
+                    <button class="filter-button" data-filter="rifles">Винтовки</button>
+                    <button class="filter-button" data-filter="snipers">AWP</button>
+                    <button class="filter-button" data-filter="pistols">Пистолеты</button>
+                    <button class="filter-button" data-filter="knives">Ножи</button>
+                    <button class="filter-button" data-filter="gloves">Перчатки</button>
+                </div>
+
+                <div id="shopList" class="items-grid">
+                    <div class="loading">Загрузка магазина...</div>
+                </div>
+            </section>
+
+
+            <!-- ИНВЕНТАРЬ -->
+
+            <section class="page" id="inventoryPage">
+                <div class="page-title">
+                    <span class="eyebrow">YOUR COLLECTION</span>
+                    <h2>ИНВЕНТАРЬ</h2>
+                    <p>Предметы, которые ты получил или купил.</p>
+                </div>
+
+                <div class="inventory-summary">
+                    <span>Всего предметов</span>
+                    <strong id="inventoryCount">0</strong>
+                </div>
+
+                <div id="inventoryList" class="items-grid">
+                    <div class="empty-state">Инвентарь пуст.</div>
+                </div>
+            </section>
+
+
+            <!-- CASE BATTLE -->
+
+            <section class="page" id="battlePage">
+                <div class="page-title">
+                    <span class="eyebrow">CASE BATTLE</span>
+                    <h2>БИТВА КЕЙСОВ</h2>
+                    <p>Соревнуйся с ботом за общий банк.</p>
+                </div>
+
+                <div class="battle-panel">
+                    <div class="battle-warning">
+                        ⚠️ Сейчас доступны только битвы против бота.
+                    </div>
+
+                    <label for="battleCase">Выбери кейс</label>
+                    <select id="battleCase">
+                        <option value="">Загрузка кейсов...</option>
+                    </select>
+
+                    <label for="battleRounds">Количество раундов</label>
+                    <select id="battleRounds">
+                        <option value="1">1 раунд</option>
+                        <option value="2">2 раунда</option>
+                        <option value="3" selected>3 раунда</option>
+                        <option value="5">5 раундов</option>
+                        <option value="10">10 раундов</option>
+                    </select>
+
+                    <label for="battleStake">Ставка (монеты)</label>
+                    <input id="battleStake" type="number" min="1" max="50000" value="50">
+
+                    <label class="checkbox-label">
+                        <input id="battleDemo" type="checkbox">
+                        Демо-битва без списания монет
+                    </label>
+
+                    <button class="primary-button full-button" onclick="startBattle()">
+                        НАЧАТЬ БИТВУ
+                    </button>
+                </div>
+
+                <div id="battleResults" class="results-section"></div>
+            </section>
+
+
+            <!-- ПРОФИЛЬ -->
+
+            <section class="page" id="profilePage">
+                <div class="page-title">
+                    <span class="eyebrow">PLAYER ACCOUNT</span>
+                    <h2>ПРОФИЛЬ</h2>
+                </div>
+
+                <div class="profile-card">
+                    <div class="profile-avatar">👤</div>
+                    <h3 id="profileName">Игрок</h3>
+                    <p id="profileUsername">@username</p>
+                    <div class="profile-balance">
+                        🪙 <strong id="profileBalance">0</strong> монет
+                    </div>
+                </div>
+
+                <div class="settings-card">
+                    <h3>Steam Trade URL</h3>
+                    <p>
+                        Сохрани ссылку обмена Steam.
+                        Не вводи пароль или код Steam Guard.
+                    </p>
+
+                    <input
+                        id="steamTradeUrl"
+                        type="url"
+                        placeholder="https://steamcommunity.com/tradeoffer/new/?..."
+                    >
+
+                    <button class="primary-button full-button" onclick="saveProfile()">
+                        СОХРАНИТЬ ССЫЛКУ
+                    </button>
+
+                    <small id="profileMessage"></small>
+                </div>
+
+                <div class="settings-card">
+                    <h3>Пополнение баланса</h3>
+                    <p>
+                        Реальные платежи пока не подключены.
+                        Ниже показаны только будущие варианты пакетов.
+                    </p>
+
+                    <div class="payment-grid">
+                        <div class="payment-option">50 грн<br><strong>10 000 🪙</strong></div>
+                        <div class="payment-option">100 грн<br><strong>20 000 🪙</strong></div>
+                        <div class="payment-option">150 грн<br><strong>30 000 🪙</strong></div>
+                        <div class="payment-option">200 грн<br><strong>40 000 🪙</strong></div>
+                        <div class="payment-option">500 грн<br><strong>100 000 🪙</strong></div>
+                        <div class="payment-option">1000 грн<br><strong>200 000 🪙</strong></div>
+                    </div>
+
+                    <small class="muted">
+                        Эти пакеты пока не продаются и не изменяют баланс.
+                    </small>
+                </div>
+            </section>
+
+        </main>
+
+
+        <!-- НИЖНЯЯ НАВИГАЦИЯ -->
+
+        <nav class="bottom-nav">
+            <button class="nav-button active" data-page="homePage" onclick="showPage('homePage')">
+                <span>⌂</span>
+                <small>Главная</small>
+            </button>
+
+            <button class="nav-button" data-page="casesPage" onclick="showPage('casesPage')">
+                <span>📦</span>
+                <small>Кейсы</small>
+            </button>
+
+            <button class="nav-button" data-page="shopPage" onclick="showPage('shopPage')">
+                <span>🛒</span>
+                <small>Магазин</small>
+            </button>
+
+            <button class="nav-button" data-page="inventoryPage" onclick="showPage('inventoryPage')">
+                <span>🎒</span>
+                <small>Инвентарь</small>
+            </button>
+
+            <button class="nav-button" data-page="profilePage" onclick="showPage('profilePage')">
+                <span>👤</span>
+                <small>Профиль</small>
+            </button>
+        </nav>
+
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script src="script.js"></script>
 </body>
 </html>
