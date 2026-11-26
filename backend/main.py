@@ -304,6 +304,18 @@ def init_db():
 
         # Старая таблица inventory остаётся для совместимости
         # с уже купленными предметами.
+                conn.execute("""
+            CREATE TABLE IF NOT EXISTS inventory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                  item_id INTEGER,
+                item_name TEXT NOT NULL,
+                item_type TEXT,
+                item_category TEXT,
+                price INTEGER DEFAULT 0,
+                purchased_at TEXT
+            )
+        """)
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS player_inventory (
