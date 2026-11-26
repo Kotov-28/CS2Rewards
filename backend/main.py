@@ -11,7 +11,7 @@ from pathlib import Path
 from urllib.parse import parse_qsl
 
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.types import WebAppInfo, MenuButtonWebApp
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
@@ -23,6 +23,7 @@ FRONTEND = ROOT / "frontend"
 DB_PATH = Path(os.getenv("DB_PATH", str(ROOT / "data" / "cs2rewards.sqlite3")))
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 WEBAPP_URL = os.getenv("WEBAPP_URL", "").strip().rstrip("/")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "0") or "0")
 BONUS_AMOUNT = 100
 BONUS_HOURS = 24
 
@@ -58,6 +59,13 @@ def db():
 def init_db():
     with db() as conn:
         conn.execute("CREATE TABLE IF NOT EXISTS users (telegram_id INTEGER PRIMARY KEY, first_name TEXT NOT NULL, balance INTEGER NOT NULL DEFAULT 0, last_bonus REAL)")
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+        if "created_at" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN created_at TEXT")
+        if "last_seen" not in columns:
+            conn.execute("ALTER TABLE users ADD COLUMN last_seen TEXT")
+        conn.execute("UPDATE users SET created_at=COALESCE(created_at, datetime('now'))")
+        conn.execute("UPDATE users SET last_seen=COALESCE(last_seen, datetime('now'))")
         conn.execute("CREATE TABLE IF NOT EXISTS inventory (id INTEGER PRIMARY KEY AUTOINCREMENT, telegram_id INTEGER NOT NULL, item_id INTEGER NOT NULL, item_name TEXT NOT NULL, item_type TEXT NOT NULL, item_category TEXT NOT NULL, price INTEGER NOT NULL, purchased_at TEXT NOT NULL)")
 
 
@@ -91,9 +99,13 @@ def current_user(x_telegram_init_data: str = Header(default="")):
 
 
 def ensure_user(user):
+    now = datetime.now(timezone.utc).isoformat()
     with db() as conn:
-        conn.execute("INSERT OR IGNORE INTO users (telegram_id, first_name, balance) VALUES (?, ?, 0)", (user["id"], user["first_name"]))
-        conn.execute("UPDATE users SET first_name=? WHERE telegram_id=?", (user["first_name"], user["id"]))
+        conn.execute(
+            "INSERT OR IGNORE INTO users (telegram_id, first_name, balance, created_at, last_seen) VALUES (?, ?, 0, ?, ?)",
+            (user["id"], user["first_name"], now, now),
+        )
+        conn.execute("UPDATE users SET first_name=?, last_seen=? WHERE telegram_id=?", (user["first_name"], now, user["id"]))
         row = conn.execute("SELECT * FROM users WHERE telegram_id=?", (user["id"],)).fetchone()
     return row
 
@@ -104,8 +116,34 @@ def inventory_for(telegram_id):
     return [dict(row) for row in rows]
 
 
+@dp.message(Command("myid"))
+async def myid_handler(message: types.Message):
+    await message.answer(f"Твой Telegram ID: {message.from_user.id}")
+
+
+@dp.message(Command("stats"))
+async def stats_handler(message: types.Message):
+    if not ADMIN_ID:
+        await message.answer("Статистика ещё не настроена: администратор должен добавить ADMIN_ID в Render.")
+        return
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("У тебя нет доступа к статистике.")
+        return
+    with db() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        today = conn.execute("SELECT COUNT(*) FROM users WHERE date(created_at)=date('now')").fetchone()[0]
+        active = conn.execute("SELECT COUNT(*) FROM users WHERE julianday(last_seen) >= julianday('now', '-7 days')").fetchone()[0]
+    await message.answer(
+        "📊 Статистика CS2 Rewards\n\n"
+        f"👥 Всего пользователей: {total}\n"
+        f"🆕 Новых сегодня: {today}\n"
+        f"🔥 Активных за 7 дней: {active}"
+    )
+
+
 @dp.message(CommandStart())
 async def start_handler(message: types.Message):
+    ensure_user({"id": message.from_user.id, "first_name": message.from_user.first_name or "Player"})
     if not WEBAPP_URL:
         await message.answer("Бот создан, но Mini App ещё не опубликовано. Сначала задайте WEBAPP_URL.")
         return
