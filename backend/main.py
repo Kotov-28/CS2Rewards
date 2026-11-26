@@ -7,237 +7,250 @@ import os
 import secrets
 import sqlite3
 import time
-
-from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import parse_qsl, parse_qs, urlparse
+from urllib.parse import parse_qs, parse_qsl, urlparse
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command, CommandStart
 from aiogram.types import WebAppInfo, MenuButtonWebApp
-
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 
+# --------------------------------------------------
+# НАСТРОЙКИ
+# --------------------------------------------------
+
 ROOT = Path(__file__).resolve().parent.parent
 FRONTEND = ROOT / "frontend"
 
 DB_PATH = Path(
-    os.getenv(
-        "DB_PATH",
-        str(ROOT / "data" / "cs2rewards.sqlite3")
-    )
+    os.getenv("DB_PATH", str(ROOT / "data" / "cs2rewards.sqlite3"))
 )
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 WEBAPP_URL = os.getenv("WEBAPP_URL", "").strip().rstrip("/")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0") or "0")
 
-BONUS_AMOUNT = 100
+BONUS_AMOUNT = 10
 BONUS_HOURS = 24
 
 
-# Магазин
+# --------------------------------------------------
+# МАГАЗИН
+# --------------------------------------------------
+
 CATALOG = [
-    {
-        "id": 1,
-        "name": "AK-47 | Redline",
-        "type": "Винтовка",
-        "category": "rifles",
-        "price": 300,
-        "icon": "🔫",
-        "rarity": "CLASSIFIED"
-    },
-    {
-        "id": 2,
-        "name": "AWP | Asiimov",
-        "type": "Снайперская винтовка",
-        "category": "snipers",
-        "price": 500,
-        "icon": "🎯",
-        "rarity": "COVERT"
-    },
-    {
-        "id": 3,
-        "name": "M4A4 | Neo-Noir",
-        "type": "Винтовка",
-        "category": "rifles",
-        "price": 400,
-        "icon": "🔫",
-        "rarity": "COVERT"
-    },
-    {
-        "id": 4,
-        "name": "Glock-18 | Fade",
-        "type": "Пистолет",
-        "category": "pistols",
-        "price": 200,
-        "icon": "🔫",
-        "rarity": "RESTRICTED"
-    },
-    {
-        "id": 5,
-        "name": "AWP | Dragon Lore",
-        "type": "Снайперская винтовка",
-        "category": "snipers",
-        "price": 1000,
-        "icon": "🐉",
-        "rarity": "COVERT"
-    },
-    {
-        "id": 6,
-        "name": "Karambit | Fade",
-        "type": "Нож",
-        "category": "knives",
-        "price": 1500,
-        "icon": "🔪",
-        "rarity": "COVERT"
-    },
+    {"id": 1, "name": "AK-47 | Redline", "type": "Винтовка",
+     "category": "rifles", "price": 2500, "icon": "🔫", "rarity": "CLASSIFIED"},
+
+    {"id": 2, "name": "AWP | Asiimov", "type": "Снайперская винтовка",
+     "category": "snipers", "price": 5000, "icon": "🎯", "rarity": "COVERT"},
+
+    {"id": 3, "name": "M4A4 | Neo-Noir", "type": "Винтовка",
+     "category": "rifles", "price": 3200, "icon": "🔫", "rarity": "COVERT"},
+
+    {"id": 4, "name": "Glock-18 | Fade", "type": "Пистолет",
+     "category": "pistols", "price": 4000, "icon": "🔫", "rarity": "RESTRICTED"},
+
+    {"id": 5, "name": "AWP | Dragon Lore", "type": "Снайперская винтовка",
+     "category": "snipers", "price": 250000, "icon": "🐉", "rarity": "COVERT"},
+
+    {"id": 6, "name": "Karambit | Fade", "type": "Нож",
+     "category": "knives", "price": 180000, "icon": "🔪", "rarity": "COVERT"},
+
+    {"id": 7, "name": "USP-S | Kill Confirmed", "type": "Пистолет",
+     "category": "pistols", "price": 4200, "icon": "🔫", "rarity": "COVERT"},
+
+    {"id": 8, "name": "Butterfly Knife | Doppler", "type": "Нож",
+     "category": "knives", "price": 220000, "icon": "🔪", "rarity": "COVERT"},
+
+    {"id": 9, "name": "M4A1-S | Printstream", "type": "Винтовка",
+     "category": "rifles", "price": 7000, "icon": "🔫", "rarity": "COVERT"},
+
+    {"id": 10, "name": "Sport Gloves | Vice", "type": "Перчатки",
+     "category": "gloves", "price": 150000, "icon": "🧤", "rarity": "EXTRAORDINARY"},
 ]
 
 
-# Кейсы и вероятности выпадения.
-# Стоимость предметов условная, это не реальные цены Steam.
-CASES = [
-    {
-        "id": "rookie",
-        "name": "Rookie Case",
-        "price": 100,
-        "icon": "📦",
-        "drops": [
-            {
-                "name": "Glock-18 | Candy",
-                "type": "Пистолет",
-                "icon": "🔫",
-                "rarity": "MIL-SPEC",
-                "value": 35,
-                "weight": 55
-            },
-            {
-                "name": "MP9 | Sand",
-                "type": "ПП",
-                "icon": "🔫",
-                "rarity": "RESTRICTED",
-                "value": 80,
-                "weight": 28
-            },
-            {
-                "name": "AK-47 | Ember",
-                "type": "Винтовка",
-                "icon": "🔫",
-                "rarity": "CLASSIFIED",
-                "value": 180,
-                "weight": 13
-            },
-            {
-                "name": "★ Shadow Daggers",
-                "type": "Нож",
-                "icon": "🔪",
-                "rarity": "COVERT",
-                "value": 650,
-                "weight": 4
-            }
-        ]
-    },
-    {
-        "id": "pro",
-        "name": "Pro Case",
-        "price": 250,
-        "icon": "🎯",
-        "drops": [
-            {
-                "name": "P250 | Steel",
-                "type": "Пистолет",
-                "icon": "🔫",
-                "rarity": "MIL-SPEC",
-                "value": 90,
-                "weight": 48
-            },
-            {
-                "name": "M4A4 | Night",
-                "type": "Винтовка",
-                "icon": "🔫",
-                "rarity": "RESTRICTED",
-                "value": 210,
-                "weight": 30
-            },
-            {
-                "name": "AWP | Fever",
-                "type": "Снайперская винтовка",
-                "icon": "🎯",
-                "rarity": "CLASSIFIED",
-                "value": 500,
-                "weight": 17
-            },
-            {
-                "name": "★ Karambit | Neon",
-                "type": "Нож",
-                "icon": "🔪",
-                "rarity": "COVERT",
-                "value": 1800,
-                "weight": 5
-            }
-        ]
-    },
-    {
-        "id": "elite",
-        "name": "Elite Case",
-        "price": 500,
-        "icon": "💎",
-        "drops": [
-            {
-                "name": "USP-S | Carbon",
-                "type": "Пистолет",
-                "icon": "🔫",
-                "rarity": "MIL-SPEC",
-                "value": 160,
-                "weight": 42
-            },
-            {
-                "name": "AK-47 | Neon Rider",
-                "type": "Винтовка",
-                "icon": "🔫",
-                "rarity": "RESTRICTED",
-                "value": 420,
-                "weight": 32
-            },
-            {
-                "name": "AWP | Hyper Beast",
-                "type": "Снайперская винтовка",
-                "icon": "🎯",
-                "rarity": "CLASSIFIED",
-                "value": 950,
-                "weight": 20
-            },
-            {
-                "name": "★ Butterfly | Aurora",
-                "type": "Нож",
-                "icon": "🔪",
-                "rarity": "COVERT",
-                "value": 3500,
-                "weight": 6
-            }
-        ]
+# --------------------------------------------------
+# КЕЙСЫ
+# В каждом кейсе ровно 10 предметов.
+# Вес определяет вероятность выпадения.
+# --------------------------------------------------
+
+def skin(name, item_type, value, rarity, weight, icon="🔫"):
+    return {
+        "name": name,
+        "type": item_type,
+        "value": value,
+        "rarity": rarity,
+        "weight": weight,
+        "icon": icon
     }
+
+
+def make_case(case_id, name, price, drops):
+    return {
+        "id": case_id,
+        "name": name,
+        "price": price,
+        "icon": "📦",
+        "drops": drops
+    }
+
+
+CASES = [
+    make_case("starter", "Starter Case", 50, [
+        skin("Glock-18 | Candy", "Пистолет", 20, "MIL-SPEC", 30),
+        skin("MP9 | Sand", "ПП", 35, "MIL-SPEC", 25),
+        skin("P250 | Sand Dune", "Пистолет", 45, "MIL-SPEC", 18),
+        skin("UMP-45 | Gunsmoke", "ПП", 60, "RESTRICTED", 10),
+        skin("FAMAS | Survivor Z", "Винтовка", 80, "RESTRICTED", 7),
+        skin("Galil AR | Stone Cold", "Винтовка", 100, "RESTRICTED", 4),
+        skin("AK-47 | Slate", "Винтовка", 180, "CLASSIFIED", 2),
+        skin("AWP | Atheris", "Снайперская винтовка", 250, "CLASSIFIED", 2),
+        skin("USP-S | Cortex", "Пистолет", 400, "COVERT", 1),
+        skin("Shadow Daggers | Safari Mesh", "Нож", 1200, "COVERT", 1, "🔪")
+    ]),
+
+    make_case("bronze", "Bronze Case", 100, [
+        skin("P2000 | Pulse", "Пистолет", 40, "MIL-SPEC", 28),
+        skin("Nova | Koi", "Дробовик", 55, "MIL-SPEC", 22),
+        skin("MAC-10 | Neon Rider", "ПП", 100, "RESTRICTED", 16),
+        skin("Five-SeveN | Monkey Business", "Пистолет", 130, "RESTRICTED", 12),
+        skin("M4A1-S | Decimator", "Винтовка", 220, "CLASSIFIED", 8),
+        skin("AK-47 | Frontside Misty", "Винтовка", 280, "CLASSIFIED", 6),
+        skin("AWP | Hyper Beast", "Снайперская винтовка", 500, "COVERT", 3),
+        skin("USP-S | Kill Confirmed", "Пистолет", 650, "COVERT", 2),
+        skin("Huntsman Knife | Forest", "Нож", 1500, "COVERT", 2, "🔪"),
+        skin("Driver Gloves | Racing Green", "Перчатки", 2200, "EXTRAORDINARY", 1, "🧤")
+    ]),
+
+    make_case("silver", "Silver Case", 180, [
+        skin("MP7 | Ocean Foam", "ПП", 70, "MIL-SPEC", 26),
+        skin("P250 | Muertos", "Пистолет", 100, "MIL-SPEC", 22),
+        skin("M4A4 | Evil Daimyo", "Винтовка", 150, "RESTRICTED", 16),
+        skin("AWP | Fever Dream", "Снайперская винтовка", 220, "RESTRICTED", 12),
+        skin("AK-47 | Redline", "Винтовка", 350, "CLASSIFIED", 9),
+        skin("M4A4 | Neo-Noir", "Винтовка", 500, "CLASSIFIED", 6),
+        skin("AWP | Asiimov", "Снайперская винтовка", 850, "COVERT", 4),
+        skin("Glock-18 | Fade", "Пистолет", 1000, "COVERT", 2),
+        skin("Bowie Knife | Doppler", "Нож", 2500, "COVERT", 2, "🔪"),
+        skin("Moto Gloves | Eclipse", "Перчатки", 4000, "EXTRAORDINARY", 1, "🧤")
+    ]),
+
+    make_case("gold", "Gold Case", 300, [
+        skin("Desert Eagle | Bronze Deco", "Пистолет", 90, "MIL-SPEC", 25),
+        skin("Galil AR | Eco", "Винтовка", 140, "MIL-SPEC", 20),
+        skin("M4A1-S | Hyper Beast", "Винтовка", 260, "RESTRICTED", 16),
+        skin("AK-47 | Neon Revolution", "Винтовка", 400, "RESTRICTED", 12),
+        skin("AWP | Containment Breach", "Снайперская винтовка", 650, "CLASSIFIED", 9),
+        skin("USP-S | Printstream", "Пистолет", 900, "CLASSIFIED", 7),
+        skin("AK-47 | Fire Serpent", "Винтовка", 1800, "COVERT", 4),
+        skin("AWP | Dragon Lore", "Снайперская винтовка", 3500, "COVERT", 3),
+        skin("Karambit | Crimson Web", "Нож", 6000, "COVERT", 2, "🔪"),
+        skin("Specialist Gloves | Fade", "Перчатки", 8000, "EXTRAORDINARY", 2, "🧤")
+    ]),
+
+    make_case("pro", "Pro Case", 450, [
+        skin("P90 | Asiimov", "ПП", 100, "MIL-SPEC", 24),
+        skin("FAMAS | Mecha Industries", "Винтовка", 180, "MIL-SPEC", 20),
+        skin("M4A4 | The Emperor", "Винтовка", 300, "RESTRICTED", 16),
+        skin("AK-47 | Asiimov", "Винтовка", 500, "RESTRICTED", 12),
+        skin("AWP | Neo-Noir", "Снайперская винтовка", 800, "CLASSIFIED", 9),
+        skin("USP-S | Monster Mashup", "Пистолет", 1100, "CLASSIFIED", 7),
+        skin("M4A1-S | Printstream", "Винтовка", 1800, "COVERT", 5),
+        skin("AK-47 | Wild Lotus", "Винтовка", 3000, "COVERT", 3),
+        skin("Butterfly Knife | Slaughter", "Нож", 6500, "COVERT", 2, "🔪"),
+        skin("Sport Gloves | Vice", "Перчатки", 9000, "EXTRAORDINARY", 2, "🧤")
+    ]),
+
+    make_case("elite", "Elite Case", 700, [
+        skin("MP9 | Starlight Protector", "ПП", 180, "MIL-SPEC", 24),
+        skin("Glock-18 | Water Elemental", "Пистолет", 250, "MIL-SPEC", 20),
+        skin("M4A1-S | Golden Coil", "Винтовка", 450, "RESTRICTED", 16),
+        skin("AK-47 | The Empress", "Винтовка", 700, "RESTRICTED", 12),
+        skin("AWP | Wildfire", "Снайперская винтовка", 1000, "CLASSIFIED", 9),
+        skin("Desert Eagle | Printstream", "Пистолет", 1400, "CLASSIFIED", 7),
+        skin("AK-47 | Vulcan", "Винтовка", 2400, "COVERT", 5),
+        skin("AWP | Gungnir", "Снайперская винтовка", 4500, "COVERT", 3),
+        skin("M9 Bayonet | Doppler", "Нож", 8000, "COVERT", 2, "🔪"),
+        skin("Hand Wraps | Cobalt Skulls", "Перчатки", 11000, "EXTRAORDINARY", 2, "🧤")
+    ]),
+
+    make_case("royal", "Royal Case", 1000, [
+        skin("P250 | See Ya Later", "Пистолет", 250, "MIL-SPEC", 24),
+        skin("AK-47 | Ice Coaled", "Винтовка", 350, "MIL-SPEC", 20),
+        skin("M4A4 | Dragon King", "Винтовка", 600, "RESTRICTED", 16),
+        skin("AWP | Duality", "Снайперская винтовка", 850, "RESTRICTED", 12),
+        skin("USP-S | The Traitor", "Пистолет", 1300, "CLASSIFIED", 9),
+        skin("AK-47 | Bloodsport", "Винтовка", 1800, "CLASSIFIED", 7),
+        skin("AWP | Fade", "Снайперская винтовка", 3000, "COVERT", 5),
+        skin("M4A1-S | Welcome to the Jungle", "Винтовка", 5000, "COVERT", 3),
+        skin("Butterfly Knife | Fade", "Нож", 9500, "COVERT", 2, "🔪"),
+        skin("Sport Gloves | Pandora's Box", "Перчатки", 14000, "EXTRAORDINARY", 2, "🧤")
+    ]),
+
+    make_case("diamond", "Diamond Case", 1500, [
+        skin("Five-SeveN | Angry Mob", "Пистолет", 300, "MIL-SPEC", 24),
+        skin("MAC-10 | Stalker", "ПП", 450, "MIL-SPEC", 20),
+        skin("M4A4 | Dragon King", "Винтовка", 750, "RESTRICTED", 16),
+        skin("AK-47 | Neon Rider", "Винтовка", 1100, "RESTRICTED", 12),
+        skin("AWP | Oni Taiji", "Снайперская винтовка", 1700, "CLASSIFIED", 9),
+        skin("Desert Eagle | Code Red", "Пистолет", 2300, "CLASSIFIED", 7),
+        skin("AK-47 | Gold Arabesque", "Винтовка", 4000, "COVERT", 5),
+        skin("AWP | Medusa", "Снайперская винтовка", 6500, "COVERT", 3),
+        skin("Karambit | Doppler", "Нож", 12000, "COVERT", 2, "🔪"),
+        skin("Specialist Gloves | Crimson Kimono", "Перчатки", 18000, "EXTRAORDINARY", 2, "🧤")
+    ]),
+
+    make_case("legend", "Legend Case", 2500, [
+        skin("USP-S | Cortex", "Пистолет", 450, "MIL-SPEC", 24),
+        skin("AK-47 | Phantom Disruptor", "Винтовка", 650, "MIL-SPEC", 20),
+        skin("M4A1-S | Player Two", "Винтовка", 1000, "RESTRICTED", 16),
+        skin("AWP | Hyper Beast", "Снайперская винтовка", 1500, "RESTRICTED", 12),
+        skin("AK-47 | Head Shot", "Винтовка", 2200, "CLASSIFIED", 9),
+        skin("M4A4 | Howl", "Винтовка", 3500, "CLASSIFIED", 7),
+        skin("AWP | Dragon Lore", "Снайперская винтовка", 6000, "COVERT", 5),
+        skin("AK-47 | Wild Lotus", "Винтовка", 8500, "COVERT", 3),
+        skin("Butterfly Knife | Doppler", "Нож", 15000, "COVERT", 2, "🔪"),
+        skin("Sport Gloves | Pandora's Box", "Перчатки", 22000, "EXTRAORDINARY", 2, "🧤")
+    ]),
+
+    make_case("supreme", "Supreme Case", 5000, [
+        skin("Glock-18 | Gamma Doppler", "Пистолет", 700, "MIL-SPEC", 24),
+        skin("Desert Eagle | Blaze", "Пистолет", 1000, "MIL-SPEC", 20),
+        skin("M4A1-S | Blue Phosphor", "Винтовка", 1600, "RESTRICTED", 16),
+        skin("AK-47 | Case Hardened", "Винтовка", 2300, "RESTRICTED", 12),
+        skin("AWP | The Prince", "Снайперская винтовка", 3500, "CLASSIFIED", 9),
+        skin("M4A4 | Poseidon", "Винтовка", 5000, "CLASSIFIED", 7),
+        skin("AK-47 | Gold Arabesque", "Винтовка", 8000, "COVERT", 5),
+        skin("AWP | Dragon Lore", "Снайперская винтовка", 12000, "COVERT", 3),
+        skin("Karambit | Fade", "Нож", 20000, "COVERT", 2, "🔪"),
+        skin("Sport Gloves | Vice", "Перчатки", 30000, "EXTRAORDINARY", 2, "🧤")
+    ])
 ]
 
+
+# --------------------------------------------------
+# ПРИЛОЖЕНИЕ И БАЗА ДАННЫХ
+# --------------------------------------------------
 
 app = FastAPI(title="CS2 Rewards API")
-
 bot = Bot(BOT_TOKEN) if BOT_TOKEN else None
 dp = Dispatcher()
 
 
-# Работа с базой данных
 @contextmanager
 def db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(DB_PATH, timeout=15)
+    conn = sqlite3.connect(DB_PATH, timeout=20)
     conn.row_factory = sqlite3.Row
 
     try:
@@ -252,36 +265,31 @@ def db():
 
 def init_db():
     with db() as conn:
-
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 telegram_id INTEGER PRIMARY KEY,
                 first_name TEXT NOT NULL,
                 balance INTEGER NOT NULL DEFAULT 0,
-                last_bonus REAL,
-                created_at TEXT,
-                last_seen TEXT,
-                steam_trade_url TEXT
+                last_bonus REAL
             )
         """)
 
         columns = {
             row["name"]
-            for row in conn.execute(
-                "PRAGMA table_info(users)"
-            ).fetchall()
+            for row in conn.execute("PRAGMA table_info(users)").fetchall()
         }
 
         migrations = {
+            "username": "TEXT",
             "created_at": "TEXT",
             "last_seen": "TEXT",
             "steam_trade_url": "TEXT"
         }
 
-        for column, definition in migrations.items():
-            if column not in columns:
+        for name, definition in migrations.items():
+            if name not in columns:
                 conn.execute(
-                    f"ALTER TABLE users ADD COLUMN {column} {definition}"
+                    f"ALTER TABLE users ADD COLUMN {name} {definition}"
                 )
 
         conn.execute("""
@@ -294,57 +302,59 @@ def init_db():
             SET last_seen = COALESCE(last_seen, datetime('now'))
         """)
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS inventory (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER NOT NULL,
-                item_id INTEGER NOT NULL,
-                item_name TEXT NOT NULL,
-                item_type TEXT NOT NULL,
-                item_category TEXT NOT NULL,
-                price INTEGER NOT NULL,
-                purchased_at TEXT NOT NULL
-            )
-        """)
+        # Старая таблица inventory остаётся для совместимости
+        # с уже купленными предметами.
 
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS game_inventory (
+            CREATE TABLE IF NOT EXISTS player_inventory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 telegram_id INTEGER NOT NULL,
                 item_name TEXT NOT NULL,
                 item_type TEXT NOT NULL,
-                item_category TEXT NOT NULL,
-                price INTEGER NOT NULL,
-                purchased_at TEXT NOT NULL
+                rarity TEXT NOT NULL,
+                value INTEGER NOT NULL,
+                source TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS battles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                telegram_id INTEGER NOT NULL,
+                result TEXT NOT NULL,
+                player_total INTEGER NOT NULL,
+                bot_total INTEGER NOT NULL,
+                stake INTEGER NOT NULL,
+                created_at TEXT NOT NULL
             )
         """)
 
 
-# Проверка авторизации Telegram
+# --------------------------------------------------
+# АВТОРИЗАЦИЯ TELEGRAM
+# --------------------------------------------------
+
 def validate_init_data(init_data: str) -> dict:
-
     if not BOT_TOKEN:
         raise HTTPException(
             503,
-            "Бот ещё не настроен: добавьте BOT_TOKEN."
+            "Бот не настроен. Добавьте BOT_TOKEN в Render."
         )
 
     if not init_data:
         raise HTTPException(
             401,
-            "Откройте Mini App через Telegram."
+            "Откройте приложение через Telegram."
         )
 
-    parsed = dict(
-        parse_qsl(init_data, keep_blank_values=True)
-    )
-
+    parsed = dict(parse_qsl(init_data, keep_blank_values=True))
     received_hash = parsed.pop("hash", None)
 
     if not received_hash:
         raise HTTPException(
             401,
-            "Не удалось проверить авторизацию Telegram."
+            "Не найдена подпись Telegram."
         )
 
     data_check_string = "\n".join(
@@ -364,33 +374,27 @@ def validate_init_data(init_data: str) -> dict:
         hashlib.sha256
     ).hexdigest()
 
-    if not hmac.compare_digest(
-        calculated_hash,
-        received_hash
-    ):
+    if not hmac.compare_digest(calculated_hash, received_hash):
         raise HTTPException(
             401,
-            "Недействительные данные авторизации Telegram."
+            "Не удалось проверить авторизацию Telegram."
         )
 
     try:
         auth_date = int(parsed.get("auth_date", "0"))
-    except ValueError:
-        raise HTTPException(
-            401,
-            "Некорректная дата авторизации Telegram."
-        )
 
-    if time.time() - auth_date > 86400:
-        raise HTTPException(
-            401,
-            "Сессия Telegram устарела. Перезапустите приложение."
-        )
+        if time.time() - auth_date > 86400:
+            raise HTTPException(401, "Сессия Telegram устарела.")
 
-    try:
-        user_data = json.loads(parsed["user"])
-        telegram_id = int(user_data["id"])
-    except (KeyError, ValueError, TypeError, json.JSONDecodeError):
+        if auth_date > time.time() + 60:
+            raise HTTPException(401, "Неверное время авторизации.")
+
+        telegram_user = json.loads(parsed["user"])
+        telegram_id = int(telegram_user["id"])
+
+    except HTTPException:
+        raise
+    except Exception:
         raise HTTPException(
             401,
             "Не удалось прочитать профиль Telegram."
@@ -399,13 +403,21 @@ def validate_init_data(init_data: str) -> dict:
     return {
         "id": telegram_id,
         "first_name": str(
-            user_data.get("first_name", "Player")
+            telegram_user.get("first_name", "Player")
         )[:64],
         "username": str(
-            user_data.get("username", "")
+            telegram_user.get("username", "")
         )[:64]
     }
 
+
+def current_user(x_telegram_init_data: str = Header(default="")):
+    return validate_init_data(x_telegram_init_data)
+
+
+# --------------------------------------------------
+# ПОЛЬЗОВАТЕЛИ И ИНВЕНТАРЬ
+# --------------------------------------------------
 
 def ensure_user(user):
     now = datetime.now(timezone.utc).isoformat()
@@ -413,125 +425,103 @@ def ensure_user(user):
     with db() as conn:
         conn.execute("""
             INSERT OR IGNORE INTO users
-            (telegram_id, first_name, balance, created_at, last_seen)
-            VALUES (?, ?, 0, ?, ?)
+            (telegram_id, first_name, username, balance, created_at, last_seen)
+            VALUES (?, ?, ?, 0, ?, ?)
         """, (
             user["id"],
             user["first_name"],
+            user.get("username", ""),
             now,
             now
         ))
 
         conn.execute("""
             UPDATE users
-            SET first_name = ?, last_seen = ?
+            SET first_name = ?, username = ?, last_seen = ?
             WHERE telegram_id = ?
         """, (
             user["first_name"],
+            user.get("username", ""),
             now,
             user["id"]
         ))
 
-        row = conn.execute("""
-            SELECT * FROM users WHERE telegram_id = ?
-        """, (user["id"],)).fetchone()
+        return conn.execute(
+            "SELECT * FROM users WHERE telegram_id = ?",
+            (user["id"],)
+        ).fetchone()
 
-    return row
+
+def add_inventory(conn, telegram_id, item, source):
+    conn.execute("""
+        INSERT INTO player_inventory
+        (telegram_id, item_name, item_type, rarity, value, source, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (
+        telegram_id,
+        item["name"],
+        item["type"],
+        item["rarity"],
+        item["value"],
+        source,
+        datetime.now(timezone.utc).isoformat()
+    ))
 
 
-def inventory_for(telegram_id):
+def get_inventory(telegram_id):
+    result = []
 
     with db() as conn:
-        rows = conn.execute("""
-            SELECT
-                item_id AS id,
-                item_name AS name,
-                item_type AS type,
-                item_category AS category,
-                price,
-                purchased_at
-            FROM inventory
-            WHERE telegram_id = ?
-            ORDER BY id DESC
-        """, (telegram_id,)).fetchall()
-
-        game_rows = conn.execute("""
+        # Предметы, купленные в старой версии приложения.
+        old_items = conn.execute("""
             SELECT
                 id,
                 item_name AS name,
                 item_type AS type,
                 item_category AS category,
-                price,
-                purchased_at
-            FROM game_inventory
+                price AS value,
+                'legacy' AS source,
+                purchased_at AS created_at
+            FROM inventory
             WHERE telegram_id = ?
             ORDER BY id DESC
         """, (telegram_id,)).fetchall()
 
-    result = [dict(row) for row in rows]
+        for item in old_items:
+            row = dict(item)
+            row["id"] = -row["id"]
+            row["rarity"] = "CLASSIFIED"
+            row["icon"] = "🔫"
+            result.append(row)
 
-    for row in game_rows:
-        item = dict(row)
-        item["id"] = -item["id"]
-        item["category"] = "game"
-        result.append(item)
+        # Новые предметы.
+        new_items = conn.execute("""
+            SELECT
+                id,
+                item_name AS name,
+                item_type AS type,
+                rarity,
+                value,
+                source,
+                created_at
+            FROM player_inventory
+            WHERE telegram_id = ?
+            ORDER BY id DESC
+        """, (telegram_id,)).fetchall()
+
+        for item in new_items:
+            row = dict(item)
+            row["icon"] = "🔫"
+            result.append(row)
 
     return result
 
 
-def save_game_item(telegram_id, item):
-    with db() as conn:
-        conn.execute("""
-            INSERT INTO game_inventory
-            (
-                telegram_id,
-                item_name,
-                item_type,
-                item_category,
-                price,
-                purchased_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (
-            telegram_id,
-            item["name"],
-            item["type"],
-            "game",
-            item["value"],
-            datetime.now(timezone.utc).isoformat()
-        ))
+# --------------------------------------------------
+# РАБОТА С КЕЙСАМИ
+# --------------------------------------------------
 
-
-# Выбор предмета из кейса
-def choose_drop(case):
-
-    total = sum(
-        item["weight"]
-        for item in case["drops"]
-    )
-
-    pick = secrets.randbelow(total)
-
-    for item in case["drops"]:
-
-        if pick < item["weight"]:
-            return {
-                key: value
-                for key, value in item.items()
-                if key != "weight"
-            }
-
-        pick -= item["weight"]
-
-    return {
-        key: value
-        for key, value in case["drops"][-1].items()
-        if key != "weight"
-    }
-
-
-def case_by_id(case_id):
-
+def get_case(case_id):
     case = next(
         (item for item in CASES if item["id"] == case_id),
         None
@@ -543,38 +533,78 @@ def case_by_id(case_id):
     return case
 
 
-# Проверка Steam Trade URL
-def validate_trade_url(value):
+def choose_drop(case):
+    total_weight = sum(
+        item["weight"] for item in case["drops"]
+    )
 
+    number = secrets.randbelow(total_weight)
+
+    for item in case["drops"]:
+        if number < item["weight"]:
+            return {
+                key: value
+                for key, value in item.items()
+                if key != "weight"
+            }
+
+        number -= item["weight"]
+
+    return {
+        key: value
+        for key, value in case["drops"][-1].items()
+        if key != "weight"
+    }
+
+
+def public_case(case):
+    return {
+        "id": case["id"],
+        "name": case["name"],
+        "price": case["price"],
+        "icon": case["icon"],
+        "skins": [
+            {
+                key: value
+                for key, value in item.items()
+                if key != "weight"
+            }
+            for item in case["drops"]
+        ]
+    }
+
+
+# --------------------------------------------------
+# ПРОВЕРКА STEAM TRADE URL
+# --------------------------------------------------
+
+def validate_trade_url(value):
     value = (value or "").strip()
 
     if not value:
         return ""
 
-    if len(value) > 500:
-        raise HTTPException(
-            400,
-            "Ссылка слишком длинная."
-        )
-
     parsed = urlparse(value)
 
-    if (
-        parsed.scheme != "https"
-        or parsed.hostname not in (
-            "steamcommunity.com",
-            "www.steamcommunity.com"
+    if parsed.scheme != "https":
+        raise HTTPException(
+            400,
+            "Ссылка должна начинаться с https://"
         )
+
+    if parsed.hostname not in (
+        "steamcommunity.com",
+        "www.steamcommunity.com"
     ):
         raise HTTPException(
             400,
-            "Нужна официальная HTTPS-ссылка Steam."
+            "Укажите официальную ссылку Steam."
         )
 
     if parsed.path.rstrip("/") != "/tradeoffer/new":
         raise HTTPException(
             400,
-            "Ссылка должна вести на /tradeoffer/new/."
+            "Неверный адрес Steam Trade URL."
         )
 
     query = parse_qs(parsed.query)
@@ -582,20 +612,25 @@ def validate_trade_url(value):
     partner = query.get("partner", [""])[0]
     token = query.get("token", [""])[0]
 
-    if (
-        not partner.isdigit()
-        or not (5 <= len(token) <= 32)
-        or not token.isalnum()
-    ):
+    if not partner.isdigit():
         raise HTTPException(
             400,
-            "Проверьте параметры partner и token в ссылке."
+            "В ссылке отсутствует правильный partner."
+        )
+
+    if not (5 <= len(token) <= 32) or not token.isalnum():
+        raise HTTPException(
+            400,
+            "Проверьте token в Steam Trade URL."
         )
 
     return value
 
 
-# Команды Telegram
+# --------------------------------------------------
+# КОМАНДЫ TELEGRAM-БОТА
+# --------------------------------------------------
+
 @dp.message(Command("myid"))
 async def myid_handler(message: types.Message):
     await message.answer(
@@ -605,17 +640,8 @@ async def myid_handler(message: types.Message):
 
 @dp.message(Command("stats"))
 async def stats_handler(message: types.Message):
-
-    if not ADMIN_ID:
-        await message.answer(
-            "Статистика ещё не настроена: добавьте ADMIN_ID в Render."
-        )
-        return
-
-    if message.from_user.id != ADMIN_ID:
-        await message.answer(
-            "У тебя нет доступа к статистике."
-        )
+    if not ADMIN_ID or message.from_user.id != ADMIN_ID:
+        await message.answer("Нет доступа к статистике.")
         return
 
     with db() as conn:
@@ -623,36 +649,31 @@ async def stats_handler(message: types.Message):
             "SELECT COUNT(*) FROM users"
         ).fetchone()[0]
 
-        today = conn.execute("""
-            SELECT COUNT(*) FROM users
-            WHERE date(created_at) = date('now')
-        """).fetchone()[0]
-
         active = conn.execute("""
-            SELECT COUNT(*) FROM users
+            SELECT COUNT(*)
+            FROM users
             WHERE julianday(last_seen) >= julianday('now', '-7 days')
         """).fetchone()[0]
 
     await message.answer(
         "📊 Статистика CS2 Rewards\n\n"
-        f"👥 Всего пользователей: {total}\n"
-        f"🆕 Новых сегодня: {today}\n"
-        f"🔥 Активных за 7 дней: {active}"
+        f"Пользователей: {total}\n"
+        f"Активных за 7 дней: {active}"
     )
 
 
 @dp.message(CommandStart())
 async def start_handler(message: types.Message):
-
     ensure_user({
         "id": message.from_user.id,
-        "first_name": message.from_user.first_name or "Player"
+        "first_name": message.from_user.first_name or "Player",
+        "username": message.from_user.username or ""
     })
 
     if not WEBAPP_URL:
         await message.answer(
-            "Бот создан, но Mini App ещё не опубликовано. "
-            "Сначала задайте WEBAPP_URL."
+            "Mini App ещё не опубликовано. "
+            "Настройте WEBAPP_URL в Render."
         )
         return
 
@@ -667,8 +688,7 @@ async def start_handler(message: types.Message):
     )
 
     await message.answer(
-        "Добро пожаловать в CS2 Rewards! "
-        "Открой мини-приложение кнопкой ниже.",
+        "Добро пожаловать в CS2 Rewards!",
         reply_markup=keyboard
     )
 
@@ -682,15 +702,16 @@ async def start_handler(message: types.Message):
         )
 
 
-# Запуск приложения
+# --------------------------------------------------
+# ЗАПУСК И ОСТАНОВКА
+# --------------------------------------------------
+
 @app.on_event("startup")
 async def startup():
     init_db()
 
     if bot:
-        asyncio.create_task(
-            dp.start_polling(bot)
-        )
+        asyncio.create_task(dp.start_polling(bot))
 
 
 @app.on_event("shutdown")
@@ -699,43 +720,33 @@ async def shutdown():
         await bot.session.close()
 
 
+# --------------------------------------------------
+# ГЛАВНАЯ СТРАНИЦА
+# --------------------------------------------------
+
 @app.get("/")
 async def index():
-    return FileResponse(
-        FRONTEND / "index.html"
-    )
+    return FileResponse(FRONTEND / "index.html")
 
 
-# Магазин
-@app.get("/api/shop")
-async def shop(
-    x_telegram_init_data: str = Header(default="")
-):
-    validate_init_data(x_telegram_init_data)
+# --------------------------------------------------
+# ПРОФИЛЬ И ДАННЫЕ ПОЛЬЗОВАТЕЛЯ
+# --------------------------------------------------
 
-    return {
-        "items": CATALOG
-    }
-
-
-# Профиль и информация пользователя
 @app.get("/api/me")
-async def me(
-    x_telegram_init_data: str = Header(default="")
-):
-
+async def me(x_telegram_init_data: str = Header(default="")):
     user = validate_init_data(x_telegram_init_data)
     row = ensure_user(user)
 
-    last_bonus = row["last_bonus"]
+    next_bonus = None
 
-    next_bonus = (
-        datetime.fromtimestamp(
-            last_bonus,
-            timezone.utc
-        ) + timedelta(hours=BONUS_HOURS)
-        if last_bonus else None
-    )
+    if row["last_bonus"]:
+        next_bonus = (
+            datetime.fromtimestamp(
+                row["last_bonus"],
+                timezone.utc
+            ) + timedelta(hours=BONUS_HOURS)
+        )
 
     return {
         "user": {
@@ -745,118 +756,53 @@ async def me(
         },
         "balance": row["balance"],
         "next_bonus_at": (
-            next_bonus.isoformat()
-            if next_bonus else None
+            next_bonus.isoformat() if next_bonus else None
         ),
-        "inventory": inventory_for(user["id"]),
-        "steam_trade_url": row["steam_trade_url"] or ""
+        "steam_trade_url": row["steam_trade_url"] or "",
+        "inventory": get_inventory(user["id"])
     }
 
 
 class ProfileRequest(BaseModel):
-    steam_trade_url: str = Field(
-        default="",
-        max_length=500
-    )
+    steam_trade_url: str = Field(default="", max_length=500)
 
 
 @app.put("/api/profile")
-async def update_profile(
+async def save_profile(
     payload: ProfileRequest,
     x_telegram_init_data: str = Header(default="")
 ):
-
     user = validate_init_data(x_telegram_init_data)
+    ensure_user(user)
 
-    safe_url = validate_trade_url(
+    trade_url = validate_trade_url(
         payload.steam_trade_url
     )
-
-    ensure_user(user)
 
     with db() as conn:
         conn.execute("""
             UPDATE users
             SET steam_trade_url = ?
             WHERE telegram_id = ?
-        """, (
-            safe_url,
-            user["id"]
-        ))
+        """, (trade_url, user["id"]))
 
     return {
         "saved": True,
-        "steam_trade_url": safe_url
+        "steam_trade_url": trade_url
     }
 
 
-# Ежедневный бонус
-@app.post("/api/bonus")
-async def claim_bonus(
-    x_telegram_init_data: str = Header(default="")
-):
+# --------------------------------------------------
+# МАГАЗИН
+# --------------------------------------------------
 
-    user = validate_init_data(x_telegram_init_data)
-    now = time.time()
+@app.get("/api/shop")
+async def shop(x_telegram_init_data: str = Header(default="")):
+    validate_init_data(x_telegram_init_data)
 
-    with db() as conn:
-
-        conn.execute("BEGIN IMMEDIATE")
-
-        conn.execute("""
-            INSERT OR IGNORE INTO users
-            (telegram_id, first_name, balance)
-            VALUES (?, ?, 0)
-        """, (
-            user["id"],
-            user["first_name"]
-        ))
-
-        row = conn.execute("""
-            SELECT balance, last_bonus
-            FROM users
-            WHERE telegram_id = ?
-        """, (user["id"],)).fetchone()
-
-        if (
-            row["last_bonus"]
-            and now - row["last_bonus"] < BONUS_HOURS * 3600
-        ):
-            next_at = datetime.fromtimestamp(
-                row["last_bonus"] + BONUS_HOURS * 3600,
-                timezone.utc
-            ).isoformat()
-
-            raise HTTPException(
-                429,
-                f"Бонус уже получен. Следующий будет доступен: {next_at}"
-            )
-
-        new_balance = row["balance"] + BONUS_AMOUNT
-
-        conn.execute("""
-            UPDATE users
-            SET balance = ?, last_bonus = ?
-            WHERE telegram_id = ?
-        """, (
-            new_balance,
-            now,
-            user["id"]
-        ))
-
-    next_at = datetime.fromtimestamp(
-        now + BONUS_HOURS * 3600,
-        timezone.utc
-    ).isoformat()
-
-    return {
-        "awarded": BONUS_AMOUNT,
-        "balance": new_balance,
-        "next_bonus_at": next_at
-    }
+    return {"items": CATALOG}
 
 
-# Покупка предметов в магазине
 class BuyRequest(BaseModel):
     item_id: int
 
@@ -866,39 +812,25 @@ async def buy_item(
     payload: BuyRequest,
     x_telegram_init_data: str = Header(default="")
 ):
-
     user = validate_init_data(x_telegram_init_data)
 
     item = next(
-        (item for item in CATALOG if item["id"] == payload.item_id),
+        (x for x in CATALOG if x["id"] == payload.item_id),
         None
     )
 
     if not item:
-        raise HTTPException(
-            404,
-            "Предмет не найден."
-        )
+        raise HTTPException(404, "Предмет не найден.")
 
     with db() as conn:
-
         conn.execute("BEGIN IMMEDIATE")
 
-        conn.execute("""
-            INSERT OR IGNORE INTO users
-            (telegram_id, first_name, balance)
-            VALUES (?, ?, 0)
-        """, (
-            user["id"],
-            user["first_name"]
-        ))
+        row = conn.execute(
+            "SELECT balance FROM users WHERE telegram_id = ?",
+            (user["id"],)
+        ).fetchone()
 
-        row = conn.execute("""
-            SELECT balance FROM users
-            WHERE telegram_id = ?
-        """, (user["id"],)).fetchone()
-
-        if row["balance"] < item["price"]:
+        if not row or row["balance"] < item["price"]:
             raise HTTPException(
                 400,
                 "Недостаточно монет для покупки."
@@ -910,186 +842,191 @@ async def buy_item(
             UPDATE users
             SET balance = ?
             WHERE telegram_id = ?
-        """, (
-            new_balance,
-            user["id"]
-        ))
+        """, (new_balance, user["id"]))
 
-        conn.execute("""
-            INSERT INTO inventory
-            (
-                telegram_id,
-                item_id,
-                item_name,
-                item_type,
-                item_category,
-                price,
-                purchased_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (
+        add_inventory(
+            conn,
             user["id"],
-            item["id"],
-            item["name"],
-            item["type"],
-            item["category"],
-            item["price"],
-            datetime.now(timezone.utc).isoformat()
-        ))
+            {
+                "name": item["name"],
+                "type": item["type"],
+                "rarity": item["rarity"],
+                "value": item["price"]
+            },
+            "shop"
+        )
 
     return {
         "balance": new_balance,
-        "item_name": item["name"],
-        "message": "Покупка добавлена в инвентарь проекта."
+        "item_name": item["name"]
     }
 
 
-# Список кейсов
-@app.get("/api/cases")
-async def get_cases(
-    x_telegram_init_data: str = Header(default="")
-):
+# --------------------------------------------------
+# СПИСОК КЕЙСОВ
+# --------------------------------------------------
 
+@app.get("/api/cases")
+async def cases(x_telegram_init_data: str = Header(default="")):
     validate_init_data(x_telegram_init_data)
 
     return {
-        "cases": [
-            {
-                "id": case["id"],
-                "name": case["name"],
-                "price": case["price"],
-                "icon": case["icon"]
-            }
-            for case in CASES
-        ]
+        "cases": [public_case(case) for case in CASES]
     }
 
 
-# Открытие кейса
-class OpenCaseRequest(BaseModel):
+# --------------------------------------------------
+# ЕЖЕДНЕВНЫЙ БОНУС
+# --------------------------------------------------
+
+@app.post("/api/bonus")
+async def claim_bonus(
+    x_telegram_init_data: str = Header(default="")
+):
+    user = validate_init_data(x_telegram_init_data)
+    now = time.time()
+
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+
+        conn.execute("""
+            INSERT OR IGNORE INTO users
+            (telegram_id, first_name, balance)
+            VALUES (?, ?, 0)
+        """, (user["id"], user["first_name"]))
+
+        row = conn.execute("""
+            SELECT balance, last_bonus
+            FROM users
+            WHERE telegram_id = ?
+        """, (user["id"],)).fetchone()
+
+        if (
+            row["last_bonus"]
+            and now - row["last_bonus"] < BONUS_HOURS * 3600
+        ):
+            raise HTTPException(
+                429,
+                "Ежедневный бонус уже получен."
+            )
+
+        new_balance = row["balance"] + BONUS_AMOUNT
+
+        conn.execute("""
+            UPDATE users
+            SET balance = ?, last_bonus = ?
+            WHERE telegram_id = ?
+        """, (new_balance, now, user["id"]))
+
+    next_bonus = datetime.fromtimestamp(
+        now + BONUS_HOURS * 3600,
+        timezone.utc
+    ).isoformat()
+
+    return {
+        "awarded": BONUS_AMOUNT,
+        "balance": new_balance,
+        "next_bonus_at": next_bonus
+    }
+
+
+# --------------------------------------------------
+# ОТКРЫТИЕ КЕЙСОВ
+# --------------------------------------------------
+
+class OpenRequest(BaseModel):
     case_id: str
+    count: int = Field(default=1, ge=1, le=50)
     demo: bool = False
 
 
 @app.post("/api/game/open")
-async def open_case(
-    payload: OpenCaseRequest,
+async def open_cases(
+    payload: OpenRequest,
     x_telegram_init_data: str = Header(default="")
 ):
-
     user = validate_init_data(x_telegram_init_data)
-    case = case_by_id(payload.case_id)
+    case = get_case(payload.case_id)
 
-    ensure_user(user)
+    total_cost = case["price"] * payload.count
 
-    drop = choose_drop(case)
+    # Все результаты рассчитываются на сервере.
+    drops = [
+        choose_drop(case)
+        for _ in range(payload.count)
+    ]
 
     with db() as conn:
-
         conn.execute("BEGIN IMMEDIATE")
 
         row = conn.execute("""
-            SELECT balance FROM users
+            SELECT balance
+            FROM users
             WHERE telegram_id = ?
         """, (user["id"],)).fetchone()
 
-        if not payload.demo:
+        if not row:
+            raise HTTPException(
+                404,
+                "Пользователь не найден."
+            )
 
-            if row["balance"] < case["price"]:
+        balance = row["balance"]
+
+        # Демо не списывает монеты и не сохраняет предметы.
+        if not payload.demo:
+            if balance < total_cost:
                 raise HTTPException(
                     400,
-                    "Недостаточно монет для открытия этого кейса."
+                    f"Недостаточно монет. Нужно: {total_cost}."
                 )
+
+            balance -= total_cost
 
             conn.execute("""
                 UPDATE users
-                SET balance = balance - ?
+                SET balance = ?
                 WHERE telegram_id = ?
-            """, (
-                case["price"],
-                user["id"]
-            ))
+            """, (balance, user["id"]))
 
-            conn.execute("""
-                INSERT INTO game_inventory
-                (
-                    telegram_id,
-                    item_name,
-                    item_type,
-                    item_category,
-                    price,
-                    purchased_at
+            for drop in drops:
+                add_inventory(
+                    conn,
+                    user["id"],
+                    drop,
+                    "case"
                 )
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (
-                user["id"],
-                drop["name"],
-                drop["type"],
-                "game",
-                drop["value"],
-                datetime.now(timezone.utc).isoformat()
-            ))
-
-        balance = conn.execute("""
-            SELECT balance FROM users
-            WHERE telegram_id = ?
-        """, (user["id"],)).fetchone()["balance"]
 
     return {
         "demo": payload.demo,
-        "drop": drop,
-        "balance": balance,
-        "case": case["name"]
+        "case": case["name"],
+        "count": payload.count,
+        "total_cost": 0 if payload.demo else total_cost,
+        "drops": drops,
+        "balance": balance
     }
 
 
-# Case Battle против бота
+# --------------------------------------------------
+# CASE BATTLE ПРОТИВ БОТА
+# --------------------------------------------------
+
 class BattleRequest(BaseModel):
     case_id: str
-    rounds: int = Field(default=3, ge=1, le=5)
-    stake: int = Field(default=100, ge=50, le=5000)
+    rounds: int = Field(default=3, ge=1, le=10)
+    stake: int = Field(default=50, ge=0, le=50000)
     demo: bool = False
+    team_size: int = Field(default=1, ge=1, le=4)
 
 
 @app.post("/api/game/battle")
-async def case_battle(
+async def battle(
     payload: BattleRequest,
     x_telegram_init_data: str = Header(default="")
 ):
-
     user = validate_init_data(x_telegram_init_data)
-    case = case_by_id(payload.case_id)
+    case = get_case(payload.case_id)
 
-    ensure_user(user)
-
-    # Сначала проверяем и списываем ставку игрока.
-    if not payload.demo:
-
-        with db() as conn:
-
-            conn.execute("BEGIN IMMEDIATE")
-
-            row = conn.execute("""
-                SELECT balance FROM users
-                WHERE telegram_id = ?
-            """, (user["id"],)).fetchone()
-
-            if row["balance"] < payload.stake:
-                raise HTTPException(
-                    400,
-                    "Недостаточно монет для ставки."
-                )
-
-            conn.execute("""
-                UPDATE users
-                SET balance = balance - ?
-                WHERE telegram_id = ?
-            """, (
-                payload.stake,
-                user["id"]
-            ))
-
-    # Игрок и бот открывают одинаковое число кейсов.
     player_drops = [
         choose_drop(case)
         for _ in range(payload.rounds)
@@ -1101,70 +1038,178 @@ async def case_battle(
     ]
 
     player_total = sum(
-        item["value"]
-        for item in player_drops
+        item["value"] for item in player_drops
     )
 
     bot_total = sum(
-        item["value"]
-        for item in bot_drops
+        item["value"] for item in bot_drops
     )
 
     if player_total > bot_total:
         result = "win"
-
-        if not payload.demo:
-            # Победитель забирает две ставки:
-            # свою и виртуальную ставку бота.
-            with db() as conn:
-                conn.execute("""
-                    UPDATE users
-                    SET balance = balance + ?
-                    WHERE telegram_id = ?
-                """, (
-                    payload.stake * 2,
-                    user["id"]
-                ))
-
     elif player_total < bot_total:
         result = "lose"
-
     else:
         result = "draw"
 
-        if not payload.demo:
-            # При ничьей возвращаем ставку игрока.
-            with db() as conn:
-                conn.execute("""
-                    UPDATE users
-                    SET balance = balance + ?
-                    WHERE telegram_id = ?
-                """, (
-                    payload.stake,
-                    user["id"]
-                ))
-
     with db() as conn:
-        balance = conn.execute("""
-            SELECT balance FROM users
+        conn.execute("BEGIN IMMEDIATE")
+
+        row = conn.execute("""
+            SELECT balance
+            FROM users
             WHERE telegram_id = ?
-        """, (user["id"],)).fetchone()["balance"]
+        """, (user["id"],)).fetchone()
+
+        if not row:
+            raise HTTPException(
+                404,
+                "Пользователь не найден."
+            )
+
+        balance = row["balance"]
+        stake = 0 if payload.demo else payload.stake
+
+        if not payload.demo:
+            if stake <= 0:
+                raise HTTPException(
+                    400,
+                    "Ставка должна быть больше нуля."
+                )
+
+            if balance < stake:
+                raise HTTPException(
+                    400,
+                    "Недостаточно монет для ставки."
+                )
+
+            # Сначала списываем ставку игрока.
+            balance -= stake
+
+            # Победитель получает весь банк.
+            if result == "win":
+                balance += stake * 2
+
+                # Предметы победителя сохраняются.
+                for item in player_drops:
+                    add_inventory(
+                        conn,
+                        user["id"],
+                        item,
+                        "battle"
+                    )
+
+            # При ничьей возвращаем ставку.
+            elif result == "draw":
+                balance += stake
+
+            conn.execute("""
+                UPDATE users
+                SET balance = ?
+                WHERE telegram_id = ?
+            """, (balance, user["id"]))
+
+        conn.execute("""
+            INSERT INTO battles
+            (telegram_id, result, player_total, bot_total, stake, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            user["id"],
+            result,
+            player_total,
+            bot_total,
+            stake,
+            datetime.now(timezone.utc).isoformat()
+        ))
 
     return {
         "demo": payload.demo,
         "result": result,
         "player_drops": player_drops,
-        "bot_drops": bot_drops,
+        "opponent_drops": bot_drops,
         "player_total": player_total,
-        "bot_total": bot_total,
-        "pot": payload.stake * 2,
-        "stake": payload.stake,
+        "opponent_total": bot_total,
+        "pot": stake * 2,
+        "balance": balance,
+        "team_size": payload.team_size,
+        "note": "Соперник в этой версии — бот."
+    }
+
+
+# --------------------------------------------------
+# ПРОДАЖА ПРЕДМЕТОВ ИЗ ИНВЕНТАРЯ
+# --------------------------------------------------
+
+class SellRequest(BaseModel):
+    inventory_id: int
+
+
+@app.post("/api/inventory/sell")
+async def sell_item(
+    payload: SellRequest,
+    x_telegram_init_data: str = Header(default="")
+):
+    user = validate_init_data(x_telegram_init_data)
+
+    with db() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+
+        item = conn.execute("""
+            SELECT *
+            FROM player_inventory
+            WHERE id = ? AND telegram_id = ?
+        """, (
+            payload.inventory_id,
+            user["id"]
+        )).fetchone()
+
+        if not item:
+            raise HTTPException(
+                404,
+                "Предмет не найден."
+            )
+
+        # Продажа за 80% условной стоимости предмета.
+        payout = max(
+            1,
+            int(item["value"] * 0.8)
+        )
+
+        conn.execute("""
+            DELETE FROM player_inventory
+            WHERE id = ? AND telegram_id = ?
+        """, (
+            payload.inventory_id,
+            user["id"]
+        ))
+
+        conn.execute("""
+            UPDATE users
+            SET balance = balance + ?
+            WHERE telegram_id = ?
+        """, (
+            payout,
+            user["id"]
+        ))
+
+        balance = conn.execute("""
+            SELECT balance
+            FROM users
+            WHERE telegram_id = ?
+        """, (user["id"],)).fetchone()["balance"]
+
+    return {
+        "sold": item["item_name"],
+        "payout": payout,
         "balance": balance
     }
 
 
-if __name__ == "__main__":
+# --------------------------------------------------
+# ЗАПУСК СЕРВЕРА
+# --------------------------------------------------
 
+if __name__ == "__main__":
     import uvicorn
 
     if not BOT_TOKEN:
@@ -1179,7 +1224,8 @@ if __name__ == "__main__":
     )
 
 
-# Подключение frontend
+# Статические файлы подключаем в самом конце,
+# чтобы они не перехватывали API-запросы.
 app.mount(
     "/",
     StaticFiles(directory=FRONTEND, html=True),
