@@ -128,6 +128,8 @@ async function refresh() {
         const data = await api("/api/me");
 
         currentUser = data.user;
+        currentUser.steam_trade_url = data.steam_trade_url || "";
+
         inventory = data.inventory || [];
 
         updateBalance(data.balance);
