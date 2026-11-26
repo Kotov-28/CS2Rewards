@@ -304,11 +304,11 @@ def init_db():
 
         # Старая таблица inventory остаётся для совместимости
         # с уже купленными предметами.
-                conn.execute("""
+        conn.execute("""
             CREATE TABLE IF NOT EXISTS inventory (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 telegram_id INTEGER NOT NULL,
-                  item_id INTEGER,
+                item_id INTEGER,
                 item_name TEXT NOT NULL,
                 item_type TEXT,
                 item_category TEXT,
